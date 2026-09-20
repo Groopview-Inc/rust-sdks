@@ -86,6 +86,8 @@ pub mod ffi {
             sample_rate: i32,
             nb_channels: usize,
             nb_frames: usize,
+            has_absolute_capture_timestamp: bool,
+            absolute_capture_timestamp_ms: i64,
         );
     }
 }
@@ -107,6 +109,17 @@ unsafe impl ExternType for CompleteCallback {
 
 pub trait AudioSink: Send {
     fn on_data(&self, data: &[i16], sample_rate: i32, nb_channels: usize, nb_frames: usize);
+
+    fn on_data_with_timestamp(
+        &self,
+        data: &[i16],
+        sample_rate: i32,
+        nb_channels: usize,
+        nb_frames: usize,
+        _absolute_capture_timestamp_ms: Option<i64>,
+    ) {
+        self.on_data(data, sample_rate, nb_channels, nb_frames);
+    }
 }
 
 pub struct AudioSinkWrapper {
@@ -118,7 +131,62 @@ impl AudioSinkWrapper {
         Self { observer }
     }
 
-    fn on_data(&self, data: &[i16], sample_rate: i32, nb_channels: usize, nb_frames: usize) {
-        self.observer.on_data(data, sample_rate, nb_channels, nb_frames);
+    fn on_data(
+        &self,
+        data: &[i16],
+        sample_rate: i32,
+        nb_channels: usize,
+        nb_frames: usize,
+        has_absolute_capture_timestamp: bool,
+        absolute_capture_timestamp_ms: i64,
+    ) {
+        let timestamp = has_absolute_capture_timestamp.then_some(absolute_capture_timestamp_ms);
+        self.observer.on_data_with_timestamp(data, sample_rate, nb_channels, nb_frames, timestamp);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Mutex;
+
+    use super::*;
+
+    #[derive(Default)]
+    struct RecordingSink {
+        timestamps: Mutex<Vec<Option<i64>>>,
+    }
+
+    impl AudioSink for RecordingSink {
+        fn on_data(
+            &self,
+            _data: &[i16],
+            _sample_rate: i32,
+            _nb_channels: usize,
+            _nb_frames: usize,
+        ) {
+            self.timestamps.lock().unwrap().push(None);
+        }
+
+        fn on_data_with_timestamp(
+            &self,
+            _data: &[i16],
+            _sample_rate: i32,
+            _nb_channels: usize,
+            _nb_frames: usize,
+            absolute_capture_timestamp_ms: Option<i64>,
+        ) {
+            self.timestamps.lock().unwrap().push(absolute_capture_timestamp_ms);
+        }
+    }
+
+    #[test]
+    fn wrapper_preserves_present_and_absent_capture_timestamps() {
+        let sink = Arc::new(RecordingSink::default());
+        let wrapper = AudioSinkWrapper::new(sink.clone());
+
+        wrapper.on_data(&[1, 2], 48_000, 1, 2, true, 42_000);
+        wrapper.on_data(&[3, 4], 48_000, 1, 2, false, 99_000);
+
+        assert_eq!(*sink.timestamps.lock().unwrap(), vec![Some(42_000), None]);
     }
 }

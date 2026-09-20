@@ -25,10 +25,17 @@ pub mod native {
     use livekit_runtime::Stream;
 
     use super::stream_imp;
-    use crate::{audio_frame::AudioFrame, audio_track::RtcAudioTrack};
+    use crate::{
+        audio_frame::{AudioFrame, TimedAudioFrame},
+        audio_track::RtcAudioTrack,
+    };
 
     pub struct NativeAudioStream {
         pub(crate) handle: stream_imp::NativeAudioStream,
+    }
+
+    pub struct NativeTimedAudioStream {
+        pub(crate) handle: stream_imp::NativeTimedAudioStream,
     }
 
     impl Debug for NativeAudioStream {
@@ -55,6 +62,40 @@ pub mod native {
 
     impl Stream for NativeAudioStream {
         type Item = AudioFrame<'static>;
+
+        fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
+            Pin::new(&mut self.get_mut().handle).poll_next(cx)
+        }
+    }
+
+    impl Debug for NativeTimedAudioStream {
+        fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+            f.debug_struct("NativeTimedAudioStream").field("track", &self.track()).finish()
+        }
+    }
+
+    impl NativeTimedAudioStream {
+        pub fn new(audio_track: RtcAudioTrack, sample_rate: i32, num_channels: i32) -> Self {
+            Self {
+                handle: stream_imp::NativeTimedAudioStream::new(
+                    audio_track,
+                    sample_rate,
+                    num_channels,
+                ),
+            }
+        }
+
+        pub fn track(&self) -> RtcAudioTrack {
+            self.handle.track()
+        }
+
+        pub fn close(&mut self) {
+            self.handle.close()
+        }
+    }
+
+    impl Stream for NativeTimedAudioStream {
+        type Item = TimedAudioFrame<'static>;
 
         fn poll_next(self: Pin<&mut Self>, cx: &mut Context) -> Poll<Option<Self::Item>> {
             Pin::new(&mut self.get_mut().handle).poll_next(cx)

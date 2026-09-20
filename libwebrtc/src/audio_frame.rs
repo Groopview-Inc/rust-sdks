@@ -22,6 +22,12 @@ pub struct AudioFrame<'a> {
     pub samples_per_channel: u32,
 }
 
+#[derive(Debug, Clone)]
+pub struct TimedAudioFrame<'a> {
+    pub frame: AudioFrame<'a>,
+    pub absolute_capture_timestamp_ms: Option<i64>,
+}
+
 impl AudioFrame<'_> {
     // Owned
     pub fn new(sample_rate: u32, num_channels: u32, samples_per_channel: u32) -> Self {

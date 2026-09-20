@@ -96,6 +96,17 @@ void NativeAudioSink::OnData(const void* audio_data,
                              int sample_rate,
                              size_t number_of_channels,
                              size_t number_of_frames) {
+  OnData(audio_data, bits_per_sample, sample_rate, number_of_channels,
+         number_of_frames, std::nullopt);
+}
+
+void NativeAudioSink::OnData(
+    const void* audio_data,
+    int bits_per_sample,
+    int sample_rate,
+    size_t number_of_channels,
+    size_t number_of_frames,
+    std::optional<int64_t> absolute_capture_timestamp_ms) {
   RTC_CHECK_EQ(16, bits_per_sample);
 
   const int16_t* data = static_cast<const int16_t*>(audio_data);
@@ -110,15 +121,19 @@ void NativeAudioSink::OnData(const void* audio_data,
     rust::Slice<const int16_t> rust_slice(
         frame_.data(), frame_.num_channels() * frame_.samples_per_channel());
 
-    observer_->on_data(rust_slice, frame_.sample_rate_hz(),
-                       frame_.num_channels(), frame_.samples_per_channel());
+    observer_->on_data(
+        rust_slice, frame_.sample_rate_hz(), frame_.num_channels(),
+        frame_.samples_per_channel(), absolute_capture_timestamp_ms.has_value(),
+        absolute_capture_timestamp_ms.value_or(0));
 
   } else {
     rust::Slice<const int16_t> rust_slice(
         data, number_of_channels * number_of_frames);
 
     observer_->on_data(rust_slice, sample_rate, number_of_channels,
-                       number_of_frames);
+                       number_of_frames,
+                       absolute_capture_timestamp_ms.has_value(),
+                       absolute_capture_timestamp_ms.value_or(0));
   }
 }
 
